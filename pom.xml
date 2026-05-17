@@ -93,6 +93,7 @@
         <module>m5-level-18</module>
         <module>m5-level-19</module>
         <module>m5-level-20</module>
+        <module>m5-level-21</module>
     </modules>
 
     <properties>

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ru" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://super-dev-styles.github.io/website-assets/slides.css" rel="stylesheet">
+    <script src="https://super-dev-styles.github.io/website-assets/slides.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <link href="https://super-dev-styles.github.io/website-assets/styles.css" rel="stylesheet">
+    <link href="https://super-dev-styles.github.io/website-assets/view.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: false });</script>
+    <title>Уровень 21: Тестирование микросервисов</title>
+</head>
+<body>
+<div class="content lecture-content post-content">
+    <db-content>
+        <h1>Уровень 21: Тестирование микросервисов</h1>
+        <p>Мы построили распределенную систему, но как убедиться, что ее компоненты правильно взаимодействуют друг с другом? На этом уровне мы погрузимся в стратегии тестирования микросервисов. Вы узнаете, как адаптировать <b>пирамиду тестирования</b> для распределенных систем и почему <b>контрактное тестирование</b> с помощью <b>Pact</b> является ключевым для обеспечения совместимости между сервисами.</p>
+        <p>Мы вновь вернемся к <b>Testcontainers</b> и увидим, как с его помощью создавать надежные интеграционные и <b>End-to-End тесты</b>, которые проверяют сквозные бизнес-сценарии с реальными базами данных и брокерами сообщений. Наконец, мы разберемся, как тестировать <b>асинхронные процессы</b> с помощью библиотеки <b>Awaitility</b>.</p>
+        <hr>
+        <h2>Сложности тестирования</h2>
+        <p>Тестирование микросервисов на порядок сложнее тестирования монолита. Мы сталкиваемся с проблемами распределенных систем:</p>
+        <ul>
+            <li>Как протестировать <code>Order Service</code>, если для его работы нужен <code>Product Service</code>, который может быть недоступен в тестовом окружении?</li>
+            <li>Взаимодействие происходит по сети, которая может быть медленной или нестабильной.</li>
+            <li>Как подготовить тестовые данные, если они разбросаны по нескольким базам данных?</li>
+            <li>Как проверить результат операции, которая выполняется где-то в фоне после отправки события в Kafka?</li>
+            <li>Тест может упасть не из-за ошибки в коде, а из-за проблем с сетью, конфигурацией или недоступностью зависимостей.</li>
+        </ul>
+        <hr>
+        <h2>Пирамида тестирования (микросервисная версия)</h2>
+        <p>Классическая пирамида расширяется, чтобы учесть новые вызовы.</p>
+        <h4>Адаптированная пирамида</h4>
+        <div class="mermaid">
+            graph LR
+            E2E["🌐 End-to-End<br/>• Полные бизнес-сценарии<br/>• Несколько сервисов<br/>• Очень медленные и хрупкие<br/>• Сложная отладка"]
+            Contract["⚖️ Контрактные тесты<br/>• API совместимость<br/>• Consumer-driven contracts<br/>• Быстрые и надежные<br/>• Предотвращают breaking changes"]
+            Integration["🔗 Интеграционные<br/>• Компоненты внутри ОДНОГО сервиса<br/>• БД, внешние API<br/>• Средняя скорость<br/>• Инфраструктурные зависимости"]
+            Unit["⚡ Unit-тесты<br/>• Один класс в изоляции<br/>• Остаются фундаментом<br/>• Очень быстрые<br/>• Высокая скорость обратной связи"]
+
+            E2E -.->|Меньше| Contract
+            Contract -.->|Меньше| Integration
+            Integration -.->|Меньше| Unit
+
+
+            style E2E fill:#ffcdd2,stroke:#d32f2f
+            style Contract fill:#e1bee7,stroke:#8e24aa
+            style Integration fill:#fff3e0,stroke:#f57c00
+            style Unit fill:#e8f5e8,stroke:#388e3c
+
+
+        </div>
+        <ul>
+            <li><b>Unit-тесты</b> остаются фундаментом.</li>
+            <li><b>Интеграционные тесты</b> проверяют компоненты внутри <b>одного</b> сервиса.</li>
+            <li><b>Контрактные тесты:</b> проверяют <b>совместимость API</b> между двумя сервисами, не запуская их вместе.</li>
+            <li><b>End-to-End тесты:</b> проверяют сквозной бизнес-сценарий через <b>несколько</b> запущенных сервисов.</li>
+        </ul>
+        <h3>Unit-тесты</h3>
+        <p>Unit-тесты в микросервисах ничем не отличаются от Unit-тестов в монолите, и они по-прежнему составляют <b>основу</b> вашей стратегии тестирования.</p>
+        <ul>
+            <li><b>Цель:</b> проверить один класс в полной изоляции.</li>
+            <li><b>Инструменты:</b> JUnit 5, Mockito.</li>
+            <li><b>Принцип:</b> все зависимости (репозитории, клиенты к другим сервисам) <b>мокируются</b>.</li>
+        </ul>
+        <p>Они быстрые, стабильные и составляют 70-80% всех ваших тестов. Они ничего не знают о том, что сервис работает в распределенной среде.</p>
+        <h3>Интеграционные тесты (внутри сервиса)</h3>
+        <p>Следующий уровень — проверка того, что все части <b>одного микросервиса</b> работают вместе как единое целое.</p>
+        <ul>
+            <li><b>Цель:</b> проверить взаимодействие от контроллера до базы данных.</li>
+            <li><b>Инструменты:</b> <code>@SpringBootTest</code>, <code>MockMvc</code> (для REST), <code>GraphQlTester</code> (для GraphQL).</li>
+            <li><b>Принцип:</b> запускается Spring Context для вашего сервиса. Внешние сервисы <b>мокируются</b> (например, с помощью <code>@MockBean</code> для Feign-клиентов). Зависимости вроде базы данных запускаются в <b>Testcontainers</b>.</li>
+        </ul>
+        <p>Эти тесты гарантируют, что ваш сервис является внутренне согласованным и работает корректно.</p>
+        <h3>Границы интеграционного теста</h3>
+        <div class="mermaid">
+            graph TD
+            subgraph "Тестовое окружение"
+            TestRunner["JUnit / @SpringBootTest"]
+
+            subgraph "Система под тестированием (SUT): Order Service"
+            Controller["Controller"]
+            Service["Service"]
+            Repo["Repository"]
+            DB[("PostgreSQL<br/>(Testcontainers)")]
+
+            Controller --> Service --> Repo --> DB
+            end
+
+            MockedClient["❌ Product Service<br/>(Мокируется через @MockBean)"]
+
+            TestRunner -- "вызывает" --> Controller
+            Service -- "зависит от" --> MockedClient
+            end
+
+            style Controller fill:#c8e6c9
+            style Service fill:#c8e6c9
+            style Repo fill:#c8e6c9
+            style DB fill:#c8e6c9
+            style MockedClient fill:#ffcdd2
+        </div>
+        <hr>
+        <h2>Проблема взаимодействия</h2>
+        <p><code>Order Service</code> вызывает <code>Product Service</code> через Feign-клиент. В интеграционных тестах для <code>Order Service</code> мы мокируем этот клиент.</p>
+        <pre class="language-java"><code>@SpringBootTest
+class OrderServiceTest {
+    @MockBean
+    private ProductServiceClient productServiceClient;
+
+    @Test
+    void testOrderCreation() {
+        when(productServiceClient.getProductById(1L))
+            .thenReturn(new ProductDto(...)); // Мы "придумали" ответ
+        // ...
+    }
+}
+</code></pre>
+        <p>А что, если команда <code>Product Service</code> переименовала поле в <code>ProductDto</code> или изменила URL? Наши тесты для <code>Order Service</code> продолжат проходить (ведь они используют мок), но в продакшене все сломается!</p>
+        <hr>
+        <h2>Контрактное тестирование</h2>
+        <p>Эту проблему решает <b>Consumer-Driven Contract Testing (CDCT)</b>.</p>
+        <p>Вместо того чтобы "придумывать" ответы, сервис-потребитель (Consumer, <code>Order Service</code>) создает <b>"контракт"</b> — файл, в котором записаны его ожидания от API сервиса-поставщика (Provider, <code>Product Service</code>).</p>
+        <p>Этот контракт становится "законом" для поставщика. В CI/CD пайплайне поставщика запускается специальный тест, который проверяет: "Соответствует ли мое текущее API ожиданиям, записанным в контракте?". Если нет — сборка падает, и несовместимые изменения не попадут в продакшшен.</p>
+        <hr>
+        <h2>Фреймворк Pact</h2>
+        <p><b>Pact</b> — это самый популярный open-source фреймворк для реализации контрактного тестирования.</p>
+        <p>Он формализует процесс и предоставляет библиотеки для множества языков, включая Java.</p>
+        <p>Pact работает в два этапа:</p>
+        <ol>
+            <li><b>На стороне Consumer'а:</b> пишете тест, который "проигрывает" взаимодействие с мок-сервером, предоставленным Pact. Если тест успешен, Pact генерирует файл контракта (<code>.json</code>).</li>
+            <li><b>На стороне Provider'а:</b> пишете тест, который "проигрывает" запросы из файла контракта против вашего реального, запущенного API, и сверяет ответы с теми, что записаны в контракте.</li>
+        </ol>
+        <img data-max-width="1024" data-id="3f2d06b8-427b-4c3a-8255-86079189b774" src="https://cdn.javarush.com/images/article/3f2d06b8-427b-4c3a-8255-86079189b774/1024.jpeg" alt="">
+        <p><a href="https://pactflow.io/how-pact-works/?utm_source=ossdocs&utm_campaign=getting_started#slide-1" target="_blank">How Pact works</a></p>
+        <hr>
+        <h2>Как работает Pact</h2>
+        <h4>Работа Pact с полным жизненным циклом контрактного тестирования</h4>
+        <p>Pact Broker выступает центральным звеном, обеспечивая координацию между командами и контроль совместимости версий сервисов!</p>
+        <div class="mermaid">
+            sequenceDiagram
+            participant Consumer as Order Service<br/>(Consumer)
+            participant PactMock as Pact Mock Server
+            participant PactBroker as Pact Broker<br/>(Contract Repository)
+            participant Provider as Product Service<br/>(Provider)
+
+            Note over Consumer, Provider: Consumer-Driven Contract Testing Flow
+
+            rect rgb(240, 248, 255)
+            Note over Consumer, PactMock: 📝 Phase 1: Consumer Side (CI/CD потребителя)
+
+            Consumer->>PactMock: 1. Определяет expectations<br/>given("product exists")<br/>upon receiving("get product request")<br/>with(GET /products/123)<br/>will respond with(200, productJson)
+            activate PactMock
+
+            Consumer->>PactMock: 2. Выполняет интеграционный тест<br/>против Mock Server
+
+            PactMock-->>Consumer: 3. Возвращает mock-ответ<br/>согласно определенному контракту
+            deactivate PactMock
+
+            Note over Consumer: ✅ Тест прошел успешно
+
+            Consumer->>PactBroker: 4. Публикует контракт (pact file)<br/>order-service-product-service.json
+            activate PactBroker
+
+            Note over PactBroker: Контракт сохранен<br/>версия, теги, метаданные
+            end
+
+            rect rgb(240, 255, 240)
+            Note over Provider, PactBroker: 🔧 Phase 2: Provider Side (CI/CD поставщика)
+
+            Provider->>PactBroker: 5. Загружает актуальные контракты<br/>для Product Service
+            PactBroker-->>Provider: Возвращает pact files
+            deactivate PactBroker
+
+            Provider->>Provider: 6. Запускает реальный Product Service<br/>на тестовом окружении
+            activate Provider
+
+            Provider->>Provider: 7. "Проигрывает" запросы из контракта<br/>GET /products/123<br/>с состоянием "product exists"
+
+            Provider->>Provider: 8. Сравнивает реальный ответ API<br/>с ожиданиями из контракта
+
+            alt ✅ Контракт выполнен
+            Provider->>PactBroker: 9a. Публикует SUCCESS результат
+            Note over Provider: Все expectations соблюдены
+            else ❌ Контракт нарушен
+            Provider->>PactBroker: 9b. Публикует FAILURE результат
+            Note over Provider: Breaking change обнаружен!
+            end
+
+            deactivate Provider
+            end
+
+            rect rgb(255, 248, 240)
+            Note over Consumer, Provider: 🚀 Phase 3: Can-I-Deploy проверка
+
+            Note over PactBroker: Pact Broker отслеживает:<br/>• Какие контракты опубликованы<br/>• Какие версии верифицированы<br/>• Совместимость между версиями
+
+            Consumer->>PactBroker: can-i-deploy order-service v1.2.3?
+            PactBroker-->>Consumer: ✅ YES - все контракты верифицированы<br/>❌ NO - есть неверифицированные изменения
+            end
+
+            Note over Consumer, Provider: Consumer-driven: потребители определяют контракты,<br/>поставщики их выполняют
+        </div>
+        <hr>
+        <h2>Интеграционные тесты с зависимостями</h2>
+        <p>Микросервисы часто зависят не только от других сервисов, но и от инфраструктурных компонентов:</p>
+        <ul>
+            <li>Базы данных.</li>
+            <li>Брокеры сообщений.</li>
+            <li>Кэши.</li>
+        </ul>
+        <p>Использовать "боевые" или общие тестовые инстансы этих систем для автоматических тестов — плохая практика. Тесты становятся нестабильными и влияют друг на друга.</p>
+        <p>Решение — запускать временный, "чистый" экземпляр каждой зависимости для каждого тестового запуска.</p>
+        <hr>
+        <h2>Testcontainers</h2>
+        <p>Мы уже встречались с <b>Testcontainers</b> при тестировании слоя данных. В мире микросервисов его роль становится еще более фундаментальной.</p>
+        <p>Testcontainers позволяет вам прямо в JUnit-тесте запустить <b>любой</b> сервис, который можно упаковать в Docker-контейнер.</p>
+        <p>Это означает, что ваши интеграционные тесты могут работать с:</p>
+        <ul>
+            <li>Настоящей базой данных PostgreSQL, идентичной продакшену.</li>
+            <li>Настоящим брокером Kafka.</li>
+            <li>Настоящим кэшем Redis.</li>
+        </ul>
+        <p>Это делает ваши тесты невероятно надежными, так как они выполняются в окружении, максимально приближенном к реальному, но при этом остаются полностью изолированными.</p>
+        <hr>
+        <h2>Пример тестирование с Kafka</h2>
+        <p>Предположим, нам нужно протестировать, что наш <code>NotificationService</code> правильно отправляет событие в топик Kafka.</p>
+        <pre class="language-java"><code>@SpringBootTest
+@Testcontainers
+class NotificationServiceTest {
+
+    @Container
+    private static final KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.0.1"));
+
+    @DynamicPropertySource
+    static void kafkaProperties(DynamicPropertyRegistry registry) {
+        // Динамически передаем адрес временного Kafka-брокера в Spring
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+    }
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Test
+    void shouldSendNotificationEventToKafka() {
+        // Act
+        notificationService.sendWelcomeNotification("user123");
+
+        // Assert
+        // Здесь мы можем использовать тестовый Kafka-консьюмер,
+        // чтобы "прослушать" топик и убедиться,
+        // что наше сообщение действительно было отправлено.
+    }
+}
+</code></pre>
+        <hr>
+        <h2>End-to-End (E2E) тесты</h2>
+        <p>Это вершина пирамиды. E2E-тест проверяет <b>сквозной бизнес-сценарий</b> от начала до конца.</p>
+        <ul>
+            <li><b>Цель:</b> убедиться, что вся система в сборе работает как единое целое.</li>
+            <li><b>Принцип:</b> запускается <b>несколько</b> микросервисов вместе с их зависимостями. Тест имитирует действия реального пользователя (например, через API Gateway) и проверяет конечный результат.</li>
+        </ul>
+        <p>E2E-тесты <b>дорогие</b>, <b>медленные</b> и <b>хрупкие</b>. Их должно быть немного, и они должны покрывать только самые критически важные бизнес-потоки (например, "регистрация пользователя", "создание заказа").</p>
+        <h4>Границы End-to-End теста</h4>
+        <div class="mermaid">
+            graph TD
+            subgraph "Тестовое окружение (управляется Docker Compose)"
+            TestRunner["JUnit / Testcontainers"]
+
+            subgraph "Система под тестированием (SUT)"
+            Gateway["API Gateway"]
+
+            subgraph "Order Service"
+            OS_Logic["Logic"]
+            OS_DB[("Orders DB")]
+            OS_Logic --> OS_DB
+            end
+
+            subgraph "Product Service"
+            PS_Logic["Logic"]
+            PS_DB[("Products DB")]
+            PS_Logic --> PS_DB
+            end
+
+            Gateway --> OS_Logic
+            OS_Logic -- "REST-вызов" --> PS_Logic
+            end
+
+            TestRunner -- "вызывает" --> Gateway
+            end
+        </div>
+        <h2>Настройка E2E-тестов</h2>
+        <p><b>Testcontainers</b> снова приходит на помощь. С его помощью и Docker Compose можно описать и запустить всю вашу систему или ее часть.</p>
+        <ol>
+            <li>Создается <code>docker-compose.yml</code>, описывающий сервисы и их зависимости (<code>product-service</code>, <code>order-service</code>, PostgreSQL, Kafka).</li>
+            <li>В JUnit-тесте используется <code>@Testcontainers</code> и <code>DockerComposeContainer</code>.</li>
+            <li>Testcontainers запускает все контейнеры перед тестом.</li>
+            <li>Тест выполняет API-вызовы к API Gateway или напрямую к сервисам и проверяет результат (например, что заказ появился в базе данных <code>order-service</code>).</li>
+            <li>После теста Testcontainers останавливает и удаляет все контейнеры.</li>
+        </ol>
+        <hr>
+        <h2>Тестирование асинхронных процессов</h2>
+        <p>При тестировании EDA возникает проблема: как проверить результат, который появляется "когда-нибудь"?</p>
+        <pre class="language-java"><code>@Test
+void testAsyncProcessing() {
+    // 1. Отправляем команду
+    commandGateway.send(new CreateOrderCommand(...));
+
+    // 2. Проверяем результат
+    // Этот код выполнится мгновенно, а событие еще не успело обработаться!
+    // Проверка почти наверняка упадет.
+    assertThat(orderRepository.findById(...)).isPresent();
+}
+</code></pre>
+        <p><b>Awaitility</b> — это небольшая, но очень мощная библиотека, которая решает эту проблему. Она позволяет писать тесты в стиле "подожди, пока...".</p>
+        <pre class="language-java"><code>@Test
+void testAsyncProcessingWithAwaitility() {
+    // 1. Отправляем команду
+    commandGateway.send(new CreateOrderCommand(...));
+
+    // 2. Ждем до 5 секунд, пока условие не станет истинным
+    await().atMost(5, TimeUnit.SECONDS).untilAsserted(() -&gt;
+        assertThat(orderRepository.findById(...)).isPresent()
+    );
+}
+</code></pre>
+        <hr>
+    </db-content>
+</div>
+</body>
+</html>
