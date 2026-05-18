@@ -60,7 +60,7 @@ docker images | grep m5-level-22
 ```bash
 docker run -d --name m5-level-22 \
   -p 8080:8080 \
-  -e APP_GREETING="Привет из контейнера!" \
+  -e APP_GREETING="Привет из контейнера\!" \
   m5-level-22:1.0
 ```
 
