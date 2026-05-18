@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS VISITS (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    greeting_shown VARCHAR(255) NOT NULL,
+    banner_color VARCHAR(32),
+    visited_at TIMESTAMP NOT NULL
+);

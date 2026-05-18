@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="ru" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://super-dev-styles.github.io/website-assets/slides.css" rel="stylesheet">
+    <script src="https://super-dev-styles.github.io/website-assets/slides.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <link href="https://super-dev-styles.github.io/website-assets/styles.css" rel="stylesheet">
+    <link href="https://super-dev-styles.github.io/website-assets/view.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: false });</script>
+    <title>Уровень 23: Управление конфигурациями и секретами</title>
+</head>
+<body>
+<div class="content lecture-content post-content">
+    <db-content>
+        <h1>Уровень 23: Управление конфигурациями и секретами</h1>
+        <p>Мы развернули наши микросервисы, но как управлять их настройками? Хранить конфигурацию в <code>application.yml</code> каждого сервиса и пересобирать их при каждом изменении — путь к хаосу.</p>
+        <p>На этом уровне мы изучим паттерн <b>централизованной конфигурации</b>. Вы познакомитесь со <b>Spring Cloud Config</b>, который позволяет управлять настройками всех ваших сервисов из одного Git-репозитория и обновлять их на лету. Затем мы решим еще более важную проблему: <b>безопасное хранение секретов</b>. Познакомитесь с <b>HashiCorp Vault</b> — золотым стандартом для управления секретными данными в современной IT-инфраструктуре.</p>
+        <hr>
+        <h2>Проблема конфигурации</h2>
+        <p>По мере роста количества микросервисов, управление их конфигурациями становится кошмаром:</p>
+        <ul>
+            <li>Общие свойства (например, адрес брокера Kafka) дублируются в десятках <code>application.yml</code> файлов.</li>
+            <li>Чтобы изменить один общий параметр, нужно внести изменения в N репозиториев, пересобрать и развернуть N сервисов.</li>
+            <li>Нет единого места, где можно было бы увидеть всю конфигурацию системы.</li>
+            <li>Разработчики часто по неосторожности коммитят <b>секреты</b> (пароли от баз данных, API-ключи) прямо в Git-репозиторий, делая их видимыми для всех, у кого есть доступ к коду.</li>
+        </ul>
+        <h3>Паттерн внешняя конфигураци</h3>
+        <p>Решение этих проблем — вынести конфигурацию из кода приложений в отдельное, централизованное хранилище.</p>
+        <p><b>Паттерн External Configuration Store (Внешнее хранилище конфигурации):</b></p>
+        <ol>
+            <li>Создается специальный <b>сервис конфигурации</b>.</li>
+            <li>Он читает конфигурационные файлы из надежного источника (например, Git-репозиторий, база данных).</li>
+            <li>Все остальные микросервисы при старте обращаются к этому сервису, чтобы получить свою конфигурацию.</li>
+        </ol>
+        <p>Это позволяет управлять настройками всей системы из одного места, не трогая код и не переразвертывая приложения.</p>
+        <h4>Управление конфигурацией</h4>
+        <div class="mermaid">
+            graph TD
+            subgraph "До: Децентрализованная конфигурация"
+            S1["Service A<br/><i>(application.yml)</i>"]
+            S2["Service B<br/><i>(application.yml)</i>"]
+            S3["Service C<br/><i>(application.yml)</i>"]
+
+            style S1 fill:#ffcdd2
+            style S2 fill:#ffcdd2
+            style S3 fill:#ffcdd2
+            end
+
+            subgraph "После: Централизованная конфигурация"
+            ConfigServer["<b>Config Server</b>"]
+            ConfigSource[("Git Repo")]
+
+            S4["Service A"]
+            S5["Service B"]
+            S6["Service C"]
+
+            ConfigServer -- "читает из" --> ConfigSource
+            S4 -- "получает конфиг" --> ConfigServer
+            S5 -- "получает конфиг" --> ConfigServer
+            S6 -- "получает конфиг" --> ConfigServer
+
+            style ConfigServer fill:#c8e6c9
+            end
+        </div>
+        <hr>
+        <h2>Spring Cloud Config</h2>
+        <p><b>Spring Cloud Config</b> — это проект из экосистемы Spring, который реализует паттерн внешней конфигурации. Он очень прост в настройке и идеально интегрируется со Spring Boot.</p>
+        <p>Архитектура состоит из двух частей:</p>
+        <ul>
+            <li><b>Config Server:</b> отдельное Spring Boot приложение, которое предоставляет конфигурацию по REST API.</li>
+            <li><b>Config Client:</b> эта логика встраивается в ваши микросервисы.</li>
+        </ul>
+        <p>По умолчанию, Config Server использует <b>Git-репозиторий</b> в качестве источника правды для конфигурационных файлов.</p>
+        <h3>Как работает Config Server</h3>
+        <p>Config Server — это, по сути, мост между Git-репозиторием и вашими приложениями.</p>
+        <h4>Схема работы Config Server</h4>
+        <div class="mermaid">
+            sequenceDiagram
+            participant App as 🚀 Микросервис (Клиент)
+            participant CfgSrv as ⚙️ Config Server
+            participant Git as 🌳 Git репозиторий
+
+            Note over App, Git: Начальная настройка
+            CfgSrv->>Git: 1. Клонирует или "пуллит" репозиторий с .yml файлами
+            activate Git
+            Git-->>CfgSrv: 2. Возвращает файлы
+            deactivate Git
+
+            Note over App, Git: Во время работы
+            App->>CfgSrv: 3. Запрос: "Дай мне конфигурацию для 'order-service' с профилем 'prod'"
+            activate CfgSrv
+            Note right of CfgSrv: Находит нужный файл (order-service-prod.yml) и отдает его
+            CfgSrv-->>App: 4. JSON с конфигурацией
+            deactivate CfgSrv
+        </div>
+        <p>Это позволяет использовать все преимущества Git: версионирование, ветки, pull request'ы для изменения конфигурации.</p>
+        <hr>
+        <h2>Как работает Config Client</h2>
+        <p>Чтобы микросервис начал получать конфигурацию от сервера, ему нужно стать "клиентом".</p>
+        <p>Для этого используется специальный файл <code>bootstrap.yml</code> (или <code>bootstrap.properties</code>), который загружается <b>до</b> <code>application.yml</code>. В нем указывается, где найти Config Server.</p>
+        <ol>
+            <li>При старте микросервис сначала читает <code>bootstrap.yml</code>.</li>
+            <li>Он находит адрес Config Server'а.</li>
+            <li>Отправляет на него запрос, сообщая свое имя (<code>spring.application.name</code>) и активные профили.</li>
+            <li>Config Server возвращает нужные свойства.</li>
+            <li>Эти свойства из удаленного источника "подмешиваются" в конфигурацию приложения с <b>наивысшим приоритетом</b>. Они переопределяют любые значения, заданные в локальном <code>application.yml</code>.</li>
+        </ol>
+        <h4>Процесс сборки конфигурации клиента</h4>
+        <p>Эта диаграмма иллюстрирует иерархию и приоритеты источников конфигурации в Spring-приложении, использующем Spring Cloud Config. Она показывает, как свойства из удаленного Config Server'а переопределяют локальные настройки из application.yml.</p>
+        <div class="mermaid">
+            graph LR
+            subgraph "Приоритет (Высший наверху)"
+            direction TB
+            A["<b>3. Remote Properties</b><br/><i>(из Config Server)</i>"]
+            B["<b>2. Локальный `application.yml`</b>"]
+            C["<b>1. `bootstrap.yml`</b><br/><i>(Только для подключения к Config Server)</i>"]
+
+            A -- "Переопределяет" --> B
+            end
+
+            subgraph "Процесс при старте"
+            Start[Start] --> ReadBootstrap("Читает `bootstrap.yml`")
+            ReadBootstrap --> FetchConfig("Обращается к Config Server")
+            FetchConfig --> ReadAppYml("Читает `application.yml`")
+            ReadAppYml --> Merge("Собирает итоговую конфигурацию")
+            Merge --> Ready[Приложение готово к работе]
+            end
+
+            style A fill:#d1c4e9
+
+        </div>
+        <hr>
+        <h2>Настройка Config Server</h2>
+        <p>Создать Config Server очень просто:</p>
+        <ol>
+            <li><b>На <code>start.spring.io</code></b> выберите зависимость <code>Config Server</code>.</li>
+            <li><b>Включите его</b> в главном классе приложения:
+                <pre class="language-java"><code>@SpringBootApplication
+@EnableConfigServer
+public class ConfigServerApplication {
+    // ...
+}
+</code></pre>
+            </li>
+            <li><b>Укажите адрес Git-репозитория</b> в <code>application.yml</code> Config Server'а:
+                <pre class="language-yaml"><code>server:
+  port: 8888
+spring:
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/your-org/config-repo.git
+          # clone-on-start: true
+</code></pre>
+            </li>
+        </ol>
+        <hr>
+        <h2>Настройка Config Client</h2>
+        <p>Превратить микросервис в клиента еще проще:</p>
+        <ol>
+            <li><b>Добавьте зависимость</b> <code>spring-cloud-starter-config</code> в <code>pom.xml</code>.</li>
+            <li><b>Создайте файл <code>src/main/resources/bootstrap.yml</code>:</b>
+                <pre class="language-yaml"><code>spring:
+  application:
+    # Имя, по которому Config Server будет искать файл конфигурации
+    name: order-service
+  cloud:
+    config:
+      # Адрес Config Server'а
+      uri: http://localhost:8888
+</code></pre>
+                <i>В Spring Boot 3+ можно использовать <code>spring.config.import: "configserver:http://localhost:8888"</code> в <code>application.yml</code> вместо <code>bootstrap.yml</code>.</i></li>
+        </ol>
+        <p>Теперь при запуске <code>order-service</code> сам сходит на <code>http://localhost:8888</code> и загрузит свою конфигурацию.</p>
+        <hr>
+        <h2>Динамическое обновление</h2>
+        <p>Одна из самых мощных возможностей Spring Cloud Config — это обновление конфигурации <b>без перезапуска</b> сервисов.</p>
+        <ol>
+            <li>Вы вносите изменение в конфигурационный файл в Git и пушите его.</li>
+            <li>Вы отправляете пустой POST-запрос на эндпоинт Actuator <code>/actuator/refresh</code> вашего микросервиса.</li>
+            <li>Получив этот сигнал, сервис заново обращается к Config Server'у, загружает обновленную конфигурацию и пересоздает бины, помеченные специальной аннотацией <code>@RefreshScope</code>.</li>
+        </ol>
+        <p>Это позволяет, например, изменить уровень логирования или значение какого-либо бизнес-параметра на лету. Для автоматизации этого процесса используется Spring Cloud Bus.</p>
+        <h4>Поток динамического обновления конфигурации</h4>
+        <div class="mermaid">
+            sequenceDiagram
+            participant Dev as "Разработчик"
+            participant Git as "Git Repo"
+            participant ConfigServer as "Config Server"
+            participant App as  Микросервис"
+
+            Dev->>Git: 1. git push (изменение .yml)
+
+            Note over Git, ConfigServer: Можно настроить webhook для автоматизации
+
+            ConfigServer->>Git: 2. Pull (обновляет свою копию)
+
+            Dev->>App: 3. POST /actuator/refresh
+            activate App
+            App->>ConfigServer: 4. Запрашивает обновленную конфигурацию
+            activate ConfigServer
+            ConfigServer-->>App: 5. Возвращает новые свойства
+            deactivate ConfigServer
+
+            Note right of App: Пересоздает бины<br/>в @RefreshScope
+            App-->>Dev: 200 OK
+            deactivate App
+        </div>
+        <hr>
+        <h2>Проблема секретов</h2>
+        <p>Spring Cloud Config отлично решает проблему управления конфигурацией, но он <b>не решает</b> проблему управления секретами.</p>
+        <h3>Vault</h3>
+        <p><b>HashiCorp Vault</b> — это open-source инструмент, который стал стандартом индустрии для безопасного управления секретами.</p>
+        <p>Vault — это не просто хранилище. Он предоставляет целый набор функций:</p>
+        <ul>
+            <li>Все данные внутри Vault <b>шифруются</b>.</li>
+            <li>*Vault может генерировать секреты (например, пароль к БД) "на лету" с коротким сроком жизни.</li>
+            <li>Гибкая система политик, определяющая, какое приложение и к каким секретам имеет доступ.</li>
+            <li>Vault ведет подробный лог всех операций: кто, когда и к какому секрету обращался.</li>
+            <li>Vault может автоматически менять пароли в системах.</li>
+        </ul>
+        <hr>
+        <h2>Интеграция Vault со Spring Boot</h2>
+        <p>Spring Cloud Vault позволяет приложениям легко и безопасно получать секреты из Vault.</p>
+        <h4>Схема получения секрета</h4>
+        <div class="mermaid">
+            sequenceDiagram
+            participant App as 🚀 Spring Boot App
+            participant Vault as 🔐 Vault Server
+
+            Note over App, Vault: При старте приложения...
+
+            App->>Vault: 1. Аутентификация (например, по AppRole или токену)
+            activate Vault
+            Vault-->>App: 2. Успешная аутентификация, выдан токен
+            deactivate Vault
+
+            App->>Vault: 3. Запрос секрета по пути (e.g., 'secret/my-app')
+            activate Vault
+            Note right of Vault: Проверяет токен и политики доступа
+            Vault-->>App: 4. Секрет (e.g., { db.password: 's3cr3t' })
+            deactivate Vault
+
+            Note left of App: Секрет из Vault "подмешивается"<br/>в конфигурацию Spring
+        </div>
+        <p>Приложение никогда не хранит секреты у себя. Оно получает их в момент запуска и хранит только в памяти.</p>
+        <hr>
+        <h2>Настройка Vault</h2>
+        <p>Vault можно легко запустить локально в режиме для разработки.</p>
+        <p><b>1. Запуск сервера:</b></p>
+        <pre class="language-bash"><code># Запускает Vault в памяти, выводит токен доступа и ключ для "расшифровки"
+vault server -dev
+</code></pre>
+        <p><b>2. Запись секрета через CLI:</b></p>
+        <pre class="language-bash"><code># Устанавливаем переменные окружения, выданные на шаге 1
+export VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN='...'
+
+# Записываем секрет по пути secret/order-service
+vault kv put secret/order-service db.password="super-secret-password"
+</code></pre>
+        <p>Теперь в Vault хранится пароль для нашего <code>order-service</code>.</p>
+        <hr>
+        <h2>Клиент для Vault</h2>
+        <p>Чтобы наше приложение Spring Boot могло прочитать этот секрет:</p>
+        <ol>
+            <li><b>Добавьте зависимость</b> <code>spring-cloud-starter-vault-config</code> в <code>pom.xml</code>.</li>
+            <li><b>Настройте подключение в <code>bootstrap.yml</code>:</b>
+                <pre class="language-yaml"><code>spring:
+  application:
+    name: order-service
+  cloud:
+    vault:
+      uri: http://127.0.0.1:8200
+      token: "..." # Токен, полученный от Vault (в проде используются более безопасные методы аутентификации)
+</code></pre>
+            </li>
+            <li><b>Используйте свойство в <code>application.yml</code>:</b>
+                <pre class="language-yaml"><code>spring:
+  datasource:
+    password: ${db.password} # Spring автоматически подставит сюда значение из Vault
+</code></pre>
+            </li>
+        </ol>
+        <hr>
+        <h2>Vault + Spring Cloud Config</h2>
+        <p>Эти два инструмента не заменяют, а <b>дополняют</b> друг друга. Они используются для разных типов данных.</p>
+        <ul>
+            <li>
+                <p><b>Spring Cloud Config (через Git):</b></p>
+                <ul>
+                    <li>Хранит <b>нечувствительную</b> конфигурацию.</li>
+                    <li>Примеры: <code>server.port</code>, <code>logging.level.root</code>, <code>spring.jpa.show-sql</code>, таймауты, URL'ы публичных сервисов.</li>
+                    <li>Конфигурация версионируется, ее изменения проходят code review.</li>
+                </ul>
+            </li>
+            <li>
+                <p><b>HashiCorp Vault:</b></p>
+                <ul>
+                    <li>Хранит <b>только секреты</b>.</li>
+                    <li>Примеры: пароли от баз данных, ключи API, токены, сертификаты.</li>
+                    <li>Доступ к секретам строго контролируется политиками и аудируется.</li>
+                </ul>
+            </li>
+        </ul>
+        <p>При старте приложение обращается к обоим источникам и собирает из них свою финальную конфигурацию.</p>
+        <p>Совместное использование Config Server и Vault</p>
+        <div class="mermaid">
+            graph TD
+            subgraph "Источники"
+            Git[("<b>Git Repository</b><br/><i>Нечувствительная конфигурация</i><br/>- server.port<br/>- logging.level")]
+            Vault[("<b>HashiCorp Vault</b><br/><i>Секреты</i><br/>- db.password<br/>- api.key")]
+            end
+
+            subgraph "Посредники"
+            ConfigServer["Spring Cloud Config"]
+            end
+
+            subgraph "Потребитель"
+            App["Микросервис"]
+            end
+
+            Git --> ConfigServer
+            ConfigServer -- "1. Конфигурация" --> App
+            Vault -- "2. Секреты" --> App
+
+            style Git fill:#e3f2fd
+            style Vault fill:#fff3e0
+        </div>
+        <hr>
+    </db-content>
+</div>
+</body>
+</html>

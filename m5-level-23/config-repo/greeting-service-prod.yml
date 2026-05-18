@@ -1,0 +1,6 @@
+# Профиль prod: активируется параметром --spring.profiles.active=prod
+app:
+  greeting: "Welcome. Production environment."
+  banner-color: "red"
+  feature:
+    show-history: false

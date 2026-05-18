@@ -1,0 +1,60 @@
+# Общая конфигурация модуля m5-level-23.
+# Здесь живут два приложения — Config Server и Config Client (greeting-service).
+# По умолчанию запускается клиент. Для запуска сервера используется профиль `server`
+# (см. README.md).
+
+spring:
+  application:
+    name: greeting-service
+
+  # Подтягиваем конфигурацию с Config Server'а.
+  # optional: — приложение не упадёт, если Config Server недоступен;
+  # в этом случае @Value подставит дефолты из ":fallback".
+  # Когда модуль запускается как сам Config Server, на момент чтения import'а
+  # порт 8888 ещё не открыт — optional молча пропустит этот шаг.
+  config:
+    import: configserver:http://localhost:8888
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driverClassName: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # refresh нужен для @RefreshScope.
+        include: refresh,health,info
+
+---
+# === Профиль server ===
+# Запускает Config Server на 8888. Активация: --spring.profiles.active=server,native
+# `native` — встроенный в Spring Cloud Config профиль, переключающий источник
+# конфигурации с git на файловую систему (см. ниже).
+spring:
+  config:
+    activate:
+      on-profile: server
+  cloud:
+    config:
+      server:
+        native:
+          # Папка лежит рядом с pom.xml. Запускать сервер нужно из директории модуля,
+          # иначе путь file:./config-repo/ не разрешится. (см. README.md)
+          search-locations: file:./config-repo/
+server:
+  port: 8888

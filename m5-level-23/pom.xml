@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.3</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.javarush</groupId>
+    <artifactId>m5-level-23</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>m5-level-23</name>
+    <description>Demo project for Spring Boot — Spring Cloud Config (Server + Client)</description>
+    <url/>
+    <licenses>
+        <license/>
+    </licenses>
+    <developers>
+        <developer/>
+    </developers>
+    <scm>
+        <connection/>
+        <developerConnection/>
+        <tag/>
+        <url/>
+    </scm>
+    <properties>
+        <java.version>17</java.version>
+        <!-- Spring Cloud 2025.1.x — релизная линейка, совместимая со Spring Boot 4.0.x.
+             Внутри BOM: spring-cloud-config 5.0.x. -->
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <!-- BOM 2025.1.1 фиксирует spring-cloud-config 5.0.1; локально берём 5.0.3,
+             в нём поправлена регистрация ConfigDataLocationResolver для Boot 4. -->
+        <spring-cloud-config.version>5.0.3</spring-cloud-config.version>
+        <!-- В модуле два @SpringBootApplication. По умолчанию запускается клиент;
+             переопределение для сервера: -Dspring-boot.run.main-class=...ConfigServerApplication -->
+        <spring-boot.run.main-class>com.javarush.client.ClientApplication</spring-boot.run.main-class>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- Config Server: предоставляет конфигурацию микросервисам по REST API. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-config-server</artifactId>
+        </dependency>
+
+        <!-- Config Client: позволяет приложению забирать свойства с Config Server'а
+             через spring.config.import=configserver:... (Spring Boot 3+/4 способ). -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-config</artifactId>
+        </dependency>
+
+        <!-- Actuator нужен для эндпоинта /actuator/refresh,
+             который вместе с @RefreshScope даёт горячее обновление конфигурации. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Требуется только в Spring Boot 4.x+ для включения H2-консоли.
+             Для версий 3.x и ниже не нужна – достаточно spring.h2.console.enabled=true.
+             В любом случае необходим spring-boot-starter-data-jpa или jdbc для создания DataSource. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-h2console</artifactId>
+        </dependency>
+
+        <!-- H2 Database -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.4.240</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Необходим для создания DataSource и инициализации in-memory базы H2.
+             Без этого стартера консоль H2 не сможет подключиться, т.к. база не будет создана. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Lombok – автоматически генерирует конструкторы, геттеры, сеттеры и др. через аннотации.
+             optional=true означает, что зависимость не транзитивно не передаётся и не нужна в рантайме. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- mainClass подставляется из свойства, чтобы можно было
+                         переопределить из командной строки (см. README.md).
+                         По умолчанию запускается клиент. -->
+                    <mainClass>${spring-boot.run.main-class}</mainClass>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,7 @@
+# Конфигурация по умолчанию для greeting-service.
+# Отдаётся Config Server'ом, когда у клиента не активирован специфический профиль.
+app:
+  greeting: "Hello from default config"
+  banner-color: "gray"
+  feature:
+    show-history: false

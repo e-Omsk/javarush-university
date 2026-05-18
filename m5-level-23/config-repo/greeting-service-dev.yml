@@ -1,0 +1,6 @@
+# Профиль dev: активируется параметром --spring.profiles.active=dev
+app:
+  greeting: "Hello, dev! Logs verbose, история показывается."
+  banner-color: "green"
+  feature:
+    show-history: true
