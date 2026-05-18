@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="ru" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://super-dev-styles.github.io/website-assets/slides.css" rel="stylesheet">
+    <script src="https://super-dev-styles.github.io/website-assets/slides.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <link href="https://super-dev-styles.github.io/website-assets/styles.css" rel="stylesheet">
+    <link href="https://super-dev-styles.github.io/website-assets/view.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: false });</script>
+    <title>Уровень 22: CI/CD и автоматизация развертывания</title>
+</head>
+<body>
+<div class="content lecture-content post-content">
+    <db-content>
+        <h1>Уровень 22: CI/CD и автоматизация развертывания</h1>
+        <p>Мы написали отличный код и покрыли его тестами, но как доставить его на серверы быстро, надежно и без головной боли? На этом уровне мы изучим основы <b>DevOps</b> и автоматизируем процесс развертывания с помощью <b>CI/CD</b>.</p>
+        <p>Погрузимся в <b>Docker</b>, научимся "упаковывать" наши Spring Boot приложения в <b>контейнеры</b>, чтобы они работали одинаково в любом окружении. Наконец, мы создадим наш первый <b>пайплайн</b> с помощью <b>GitLab CI</b>, который будет автоматически собирать, тестировать и публиковать наше приложение при каждом изменении в коде.</p>
+        <img data-max-width="1024" data-id="3889fcbe-67d8-4f98-acb1-90f1894d3068" src="https://cdn.javarush.com/images/article/3889fcbe-67d8-4f98-acb1-90f1894d3068/1024.jpeg" alt="">
+        <hr>
+        <h2>Ручное развертывание</h2>
+        <p>Представьте процесс "выкатки" новой версии без автоматизации:</p>
+        <ol>
+            <li>Разработчик собирает <code>jar</code>-файл на своей машине.</li>
+            <li>Подключается к серверу по SSH.</li>
+            <li>Вручную копирует файл.</li>
+            <li>Останавливает старую версию приложения.</li>
+            <li>Запускает новую.</li>
+            <li>Молится, чтобы все заработало...</li>
+        </ol>
+        <p>Этот процесс:</p>
+        <ul>
+            <li>Занимает время, которое можно было потратить на разработку.</li>
+            <li>Легко допустить ошибку (скопировать не тот файл, забыть команду).</li>
+            <li>Что, если у вас 10 серверов? А 100?</li>
+            <li>Классическая фраза "а у меня на машине все работало" — следствие различий в окружениях.</li>
+        </ul>
+        <hr>
+        <h2>Что такое CI/CD?</h2>
+        <p><b>CI/CD</b> — это практика, направленная на автоматизацию и ускорение процесса доставки программного обеспечения.</p>
+        <ul>
+            <li>
+                <p><b>CI (Continuous Integration / Непрерывная Интеграция):</b></p>
+                <ul>
+                    <li>Разработчики часто (несколько раз в день) вливают свои изменения в общую ветку репозитория (например, <code>main</code> или <code>develop</code>).</li>
+                    <li>Каждое такое вливание автоматически запускает <b>сборку</b> проекта и прогон <b>автоматических тестов</b>.</li>
+                    <li>Быстро находить ошибки интеграции и получать обратную связь.</li>
+                </ul>
+            </li>
+            <li>
+                <p><b>CD (Continuous Delivery / Непрерывная Доставка):</b></p>
+                <ul>
+                    <li>Логическое продолжение CI. Если сборка и тесты прошли успешно, артефакт (наш <code>jar</code>-файл или Docker-образ) автоматически готовится к релизу.</li>
+                    <li>Артефакт публикуется в хранилище и может быть развернут на продакшен <b>нажатием одной кнопки</b>.</li>
+                    <li><b>Continuous Deployment (Непрерывное развертывание)</b> — еще более продвинутая версия, где успешная сборка автоматически развертывается на продакшен без ручного вмешательства.</li>
+                </ul>
+            </li>
+        </ul>
+        <h3>Как это работает на практике?</h3>
+        <p>Ты пишешь код, делаешь коммит, пушишь его на GitHub.
+            GitHub Actions видит это событие (пуш) и запускает твой воркфлоу ... Если один тест падает, воркфлоу фейлится, и ты получаешь уведомление.</p>
+        <p>И вот тут самое интересное: можно настроить уведомления.</p>
+        <p>Например, если тесты не прошли, то GitHub Actions может отправить письмо тебе или всей команде, сообщив, что после коммита пользователя Username код не прошёл тесты. Это значит, что вся команда сразу увидит проблему.
+            Иногда, на исправление могут дать время, и только потом вся команда получит письмо.</p>
+        <div class="mermaid">
+            graph LR
+            subgraph GitHub or GitLab
+            A[Разработчик] -- "push" --> B(Репозиторий)
+            B -- "Событие: push" --> C{Actions}
+            end
+
+            subgraph Workflow
+            C -- "Запуск" --> D[Запуск_тестов]
+            D -- "Прошли" --> E[Успешно]
+            D -- "НЕ прошли" --> F[Неуспешно]
+            end
+
+            subgraph Notifications
+            F -- "Уведомление" --> G((Email))
+            G --> H[Разработчик]
+            G --> I[Команда]
+            end
+
+            style F fill:#f99,stroke:#333,stroke-width:2px
+            style G fill:#ccf,stroke:#333,stroke-width:2px
+        </div>
+        <hr>
+        <h2>Контейнеризация</h2>
+        <p>Проблема "на моей машине все работало" возникает из-за различий в окружениях: разные версии Java, разные системные библиотеки, разные настройки ОС.</p>
+        <p><b>Контейнеризация</b> решает эту проблему. Она позволяет "упаковать" ваше приложение вместе со <b>всем его окружением</b> (Java, библиотеки, настройки) в единый, изолированный блок — <b>контейнер</b>.</p>
+        <p>Этот контейнер будет работать <b>абсолютно одинаково</b> на ноутбуке разработчика, на тестовом сервере и в продакшене в облаке. Контейнеры легковесны, быстро запускаются и обеспечивают изоляцию приложений друг от друга.</p>
+        <h4>Виртуальные машины vs. Контейнеры</h4>
+        <div class="mermaid">
+            graph LR
+            subgraph "Виртуальные машины (VM)"
+            HW1["Физический сервер"]
+            HostOS1["Хостовая ОС"]
+            Hypervisor["Гипервизор"]
+
+            subgraph "VM 1"
+            GuestOS1["Гостевая ОС"]
+            Libs1["Libs"]
+            App1["Приложение A"]
+            end
+
+            subgraph "VM 2"
+            GuestOS2["Гостевая ОС"]
+            Libs2["Libs"]
+            App2["Приложение B"]
+            end
+
+            HW1 --> HostOS1 --> Hypervisor
+            Hypervisor --> GuestOS1 --> Libs1 --> App1
+            Hypervisor --> GuestOS2 --> Libs2 --> App2
+            end
+
+            subgraph "Контейнеры (Docker)"
+            HW2["Физический сервер"]
+            HostOS2["Хостовая ОС"]
+            Engine["Docker Engine"]
+
+            subgraph "Контейнер 1"
+            Libs3["Libs"]
+            App3["Приложение A"]
+            end
+
+            subgraph "Контейнер 2"
+            Libs4["Libs"]
+            App4["Приложение B"]
+            end
+
+            HW2 --> HostOS2 --> Engine
+            Engine -- "разделяет ядро ОС" --> App3 & App4
+            Engine --> Libs3 --> App3
+            Engine --> Libs4 --> App4
+            end
+        </div>
+        <hr>
+        <h2>Dockerfile для Spring Boot</h2>
+        <p>Создать <code>Dockerfile</code> для нашего Spring Boot приложения довольно просто. Мы будем использовать <b>многоэтапную сборку (multi-stage build)</b> — которая позволяет создать минимальный по размеру и более безопасный финальный образ.</p>
+        <p><b><code>Dockerfile</code></b></p>
+        <pre class="language-dockerfile"><code># --- Этап 1: Сборка (Builder) ---
+# Используем образ с Maven и нужной версией Java для сборки проекта
+FROM maven:3.8.5-openjdk-17 AS builder
+
+# Копируем исходный код в контейнер
+WORKDIR /app
+COPY . .
+
+# Собираем проект с помощью Maven. Тесты запускаются здесь!
+RUN mvn clean package -DskipTests
+
+# --- Этап 2: Запуск (Runner) ---
+# Используем минимальный базовый образ только с Java, без Maven
+FROM openjdk:17-jdk-slim
+
+# Копируем только jar-файл из этапа сборки
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+
+# Указываем порт, который будет слушать приложение
+EXPOSE 8080
+
+# Команда для запуска приложения при старте контейнера
+ENTRYPOINT ["java", "-jar", "app.jar"]
+</code></pre>
+        <hr>
+        <h2>Сборка Docker-образа</h2>
+        <p>Имея <code>Dockerfile</code> в корне проекта, мы можем собрать образ и запустить контейнер.</p>
+        <p><b>1. Сборка образа</b></p>
+        <pre class="language-bash"><code># Команда собирает образ на основе Dockerfile в текущей директории (-t задает имя и тег)
+docker build -t my-app:1.0 .
+</code></pre>
+        <p><b>2. Просмотр образов</b></p>
+        <pre class="language-bash"><code>docker images
+</code></pre>
+        <p><b>3. Запуск контейнера</b></p>
+        <pre class="language-bash"><code># Команда запускает контейнер из образа.
+# -d: запуск в фоновом режиме
+# -p 8080:8080: проброс порта 8080 из контейнера на порт 8080 хост-машины
+docker run -d -p 8080:8080 my-app:1.0
+</code></pre>
+        <p>Теперь ваше Spring Boot приложение работает внутри изолированного Docker-контейнера!</p>
+        <hr>
+        <h2>GitLab CI</h2>
+        <p><b>GitLab CI/CD</b> — это мощный инструмент для CI/CD, встроенный прямо в GitLab. Он использует специальный файл <code>.gitlab-ci.yml</code>, который должен находиться в корне вашего репозитория.</p>
+        <p>Когда вы делаете <code>git push</code> в GitLab, специальный процесс — <b>GitLab Runner</b> — находит этот файл и выполняет инструкции, описанные в нем.</p>
+        <p><b>Пайплайн (Pipeline)</b> — это набор этапов (<b>stages</b>), которые описывают ваш процесс CI/CD. Например, <code>build</code> -> <code>test</code> -> <code>release</code>.
+            <b>Задача (Job)</b> — это конкретная команда, которая выполняется на определенном этапе.</p>
+        <hr>
+        <h2>Структура .gitlab-ci.yml</h2>
+        <p>Файл YAML имеет простую структуру.</p>
+        <pre class="language-yaml"><code># Определение этапов. Они будут выполняться в этом порядке.
+stages:
+  - build
+  - test
+  - release
+
+# Задача 'build_job', которая выполняется на этапе 'build'
+build_job:
+  stage: build
+  # Команды, которые нужно выполнить
+  script:
+    - echo "Compiling the code..."
+    - mvn compile
+
+# Задача 'test_job', которая выполняется на этапе 'test'
+test_job:
+  stage: test
+  script:
+    - echo "Running tests..."
+    - mvn test
+</code></pre>
+        <hr>
+        <h2>Простой пайплайн (CI)</h2>
+        <p>Давайте создадим пайплайн, который будет собирать наш Spring Boot проект и запускать тесты.</p>
+        <p><b><code>.gitlab-ci.yml</code>:</b></p>
+        <pre class="language-yaml"><code>stages:
+  - build
+  - test
+
+# Используем готовый Docker-образ с Maven
+default:
+  image: maven:3.8.5-openjdk-17
+
+build_app:
+  stage: build
+  script:
+    - mvn clean package
+  # Сохраняем собранный jar-файл для следующего этапа
+  artifacts:
+    paths:
+      - target/*.jar
+
+run_tests:
+  stage: test
+  script:
+    # Здесь мы могли бы запустить более сложные тесты
+    # Но для примера просто выводим сообщение
+    - echo "Running integration tests on" $CI_COMMIT_REF_NAME "branch..."
+</code></pre>
+        <h4>Визуализация пайплайна</h4>
+        <div class="mermaid">
+            graph TD
+            subgraph "🔄 CI Pipeline Flow"
+            direction TB
+
+            A[👨‍💻 Developer] -->|git push| B[📂 GitLab Repository]
+            B -->|Webhook trigger| C{🚀 Pipeline Started}
+
+            C --> D[📋 Stage: BUILD<br/>maven:3.8.5-openjdk-17]
+
+            subgraph "Build Stage"
+            D --> E[🔨 mvn clean package]
+            E --> F{Build Status}
+
+            F -->|✅ Success| G[📦 Artifacts<br/>target/*.jar]
+            F -->|❌ Failure| H[💥 Build Failed<br/>Compilation errors<br/>Dependency issues]
+            end
+
+            G --> I[📋 Stage: TEST<br/>maven:3.8.5-openjdk-17]
+
+            subgraph "Test Stage"
+            I --> J[🧪 Integration Tests<br/>echo Running tests on branch]
+            J --> K{Test Status}
+
+            K -->|✅ Success| L[🎉 Pipeline Success<br/>Ready for deploy]
+            K -->|❌ Failure| M[💥 Tests Failed<br/>Test failures<br/>Code quality issues]
+            end
+
+            H --> N[📧 Notification<br/>Developer notified<br/>Fix required]
+            M --> N
+            L --> O[📈 Metrics & Reports<br/>Build time, coverage<br/>Artifacts ready]
+            end
+
+
+            style A fill:#e3f2fd
+            style B fill:#fff3e0
+            style C fill:#e8f5e8
+            style D fill:#f3e5f5
+            style I fill:#f3e5f5
+            style G fill:#e8f5e8
+            style L fill:#c8e6c9
+            style H fill:#ffcdd2
+            style M fill:#ffcdd2
+
+        </div>
+        <hr>
+        <h2>Продвинутый пайплайн (CD)</h2>
+        <p>Теперь добавим шаги для сборки и публикации Docker-образа.</p>
+        <p><b><code>.gitlab-ci.yml</code>:</b></p>
+        <pre class="language-yaml"><code>stages:
+  - build
+  - test
+  - package # Новый этап
+  - release # Новый этап
+
+# ... этапы build и test остаются такими же ...
+
+package_docker_image:
+  stage: package
+  image: docker:20.10.16 # Используем образ с Docker
+  services:
+    - docker:20.10.16-dind # Запускаем "Docker-in-Docker"
+  script:
+    # Входим в реестр контейнеров GitLab
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    # Собираем образ
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+
+release_docker_image:
+  stage: release
+  # ... (аналогично package_docker_image)
+  script:
+    # Публикуем (push) образ в реестр
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+</code></pre>
+        <p><code>$CI_...</code> — это предопределенные переменные GitLab CI.</p>
+        <h4>CI/CD пайплайн</h4>
+        <div class="mermaid">
+            graph TB
+            subgraph "Continuous Integration (CI) - Проверка качества"
+            direction TB
+            A[Git Push] --> B["Build (mvn package)"]
+            B --> C["Test (mvn test)"]
+            end
+
+            subgraph "Continuous Delivery (CD) - Доставка продукта"
+            direction TB
+            D["Package (docker build)"] --> E["Release (docker push)"]
+            E --> F["Deploy (optional)"]
+            end
+
+            C -- "Если успешно" --> D
+
+            subgraph "Артефакты"
+            Jar[("app.jar")]
+            Image[("Docker Image")]
+            end
+
+            B -- "создает" --> Jar
+            D -- "создает" --> Image
+
+            style Jar fill:#e3f2fd
+            style Image fill:#e8f5e8
+        </div>
+        <hr>
+        <h2>Deployment</h2>
+        <p>Публикация образа в реестре — это еще не развертывание на сервере. Как доставить контейнер на продакшен?</p>
+        <p>Можно добавить еще один этап в пайплайн, <code>deploy</code>, который будет:</p>
+        <ol>
+            <li>Подключаться к вашему серверу по SSH.</li>
+            <li>Выполнять команду <code>docker pull</code>, чтобы скачать новую версию образа.</li>
+            <li>Останавливать старый контейнер и запускать новый.</li>
+        </ol>
+        <p>Это самый простой подход. В более сложных системах используются:</p>
+        <ul>
+            <li><b>Инструменты управления конфигурацией</b> (Ansible, Chef) для автоматизации настройки серверов и развертывания.</li>
+            <li><b>Оркестраторы контейнеров</b> (<b>Kubernetes</b>, Docker Swarm), которые берут на себя всю сложность управления жизненным циклом контейнеров, их масштабированием и отказоустойчивостью.</li>
+        </ul>
+        <hr>
+        <h2>Работа с переменными окружения</h2>
+        <p><b>Никогда не храните секреты (пароли, ключи API) в <code>Dockerfile</code> или <code>.gitlab-ci.yml</code>!</b></p>
+        <p>Для этого есть специальные механизмы:</p>
+        <ul>
+            <li>
+                <p><b>В GitLab CI:</b></p>
+                <ul>
+                    <li>Перейдите в <code>Settings -> CI/CD -> Variables</code> в вашем проекте.</li>
+                    <li>Создайте переменную, например, <code>DB_PASSWORD</code>.</li>
+                    <li>Пометьте ее как "Protected" (будет доступна только в защищенных ветках) и "Masked" (не будет видна в логах).</li>
+                    <li>Теперь вы можете использовать <code>$DB_PASSWORD</code> в <code>script</code>'ах вашего пайплайна.</li>
+                </ul>
+            </li>
+            <li>
+                <p><b>В Docker:</b></p>
+                <ul>
+                    <li>При запуске контейнера передавайте секреты через <b>переменные окружения</b>.</li>
+                    <li><code>docker run -e DB_PASSWORD=$DB_PASSWORD_FROM_ENV ...</code></li>
+                    <li>Ваше Spring Boot приложение автоматически "подхватит" эту переменную, если в <code>application.yml</code> есть плейсхолдер: <code>password: ${DB_PASSWORD}</code>.</li>
+                </ul>
+            </li>
+        </ul>
+        <hr>
+        <h2>CI/CD для микросервисов</h2>
+        <p>В микросервисной архитектуре <b>каждый сервис имеет свой собственный, независимый CI/CD пайплайн</b>.</p>
+        <p>Это ключевое преимущество. Команда, отвечающая за <code>product-service</code>:</p>
+        <ul>
+            <li>Работает в своем репозитории.</li>
+            <li>Имеет свой <code>.gitlab-ci.yml</code>.</li>
+            <li>Может развертывать новую версию своего сервиса 10 раз в день.</li>
+        </ul>
+        <p>При этом она <b>не затрагивает</b> и <b>не зависит</b> от пайплайнов <code>order-service</code> или <code>user-service</code>. Это позволяет командам работать автономно и быстро, что и является одной из главных целей микросервисной архитектуры.</p>
+        <hr>
+    </db-content>
+</div>
+</body>
+</html>
