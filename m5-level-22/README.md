@@ -50,10 +50,13 @@ docker images | grep m5-level-22
 ```
 
 # 3. Запускаем контейнер:
+````text
 #    -d              запуск в фоне
 #    --name          имя контейнера (видно в Docker Desktop -> Containers)
 #    -p 8080:8080    проброс порта host:container
 #    -e APP_GREETING указываем переменную окружения – Spring подхватит как app.greeting
+````
+
 ```bash
 docker run -d --name m5-level-22 \
   -p 8080:8080 \
@@ -65,12 +68,18 @@ docker run -d --name m5-level-22 \
 ```bash
 curl http://localhost:8080/
 ```
+
+```text
 # -> Привет из контейнера!
+```
 
 ```bash
 curl -s http://localhost:8080/info
 ```
+
+```text
 # -> {"greeting":"Привет из контейнера!","host":"...","java":"17.0.19"}
+```
 
 
 Остановить и удалить:
