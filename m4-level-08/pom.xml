@@ -39,6 +39,22 @@
             <version>3.2.0</version>
         </dependency>
 
+        <!-- SLF4J API – фиксируем 2.0.9, иначе HikariCP тянет транзитивно
+             slf4j-api 2.0.0-alpha1, что вызывает AbstractMethodError -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.9</version>
+        </dependency>
+
+        <!-- SLF4J no-operation logger – полностью совместим с HikariCP 5.x -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>2.0.9</version>
+            <scope>runtime</scope>
+        </dependency>
+
 
     </dependencies>
 
