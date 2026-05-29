@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ru" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://super-dev-styles.github.io/website-assets/slides.css" rel="stylesheet">
+    <script src="https://super-dev-styles.github.io/website-assets/slides.js" defer></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css" rel="stylesheet"/>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
+    <link href="https://super-dev-styles.github.io/website-assets/styles.css" rel="stylesheet">
+    <link href="https://super-dev-styles.github.io/website-assets/view.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>mermaid.initialize({ startOnLoad: false });</script>
+    <title>Уровень 24: API Gateway и Service Discovery</title>
+</head>
+<body>
+<div class="content lecture-content post-content">
+    <db-content>
+        <h1>Уровень 24: API Gateway и Service Discovery</h1>
+        <p>Наши микросервисы умеют работать с конфигурацией и секретами, но остается два последних вопроса: как они находят друг друга в динамичной облачной среде, и как внешние клиенты взаимодействуют с этой сложной системой? На этом финальном уровне мы изучим два критически важных паттерна: <b>Service Discovery</b> и <b>API Gateway</b>.</p>
+        <p>Вы познакомитесь с <b>Netflix Eureka</b> для создания "телефонной книги" ваших сервисов, которая позволит им общаться по логическим именам, а не по хрупким IP-адресам. Затем мы построим <b>API-шлюз</b> с помощью <b>Spring Cloud Gateway</b>, создав единую и безопасную точку входа для всех внешних клиентов. Это последний штрих, который превратит наш набор сервисов в полноценную, связную и надежную систему.</p>
+        <hr>
+        <h2>Как найти сервис?</h2>
+        <p>В предыдущих лекциях мы использовали "захардкоженные" URL в конфигурации:
+            <code>product-service.url: http://localhost:8081</code></p>
+        <p>В реальной среде это абсолютно не работает. Почему?</p>
+        <ul>
+            <li>В облаке или Docker-среде IP-адреса и порты присваиваются динамически и могут меняться при каждом перезапуске.</li>
+            <li>У вас может быть не один, а десять экземпляров <code>product-service</code>, и их количество может меняться в зависимости от нагрузки. Какой из десяти адресов прописывать в конфигурации?</li>
+            <li>Если один экземпляр сервиса "упадет", клиенты должны автоматически переключиться на работающий, не требуя ручного изменения конфигурации.</li>
+        </ul>
+        <img data-max-width="800" data-id="e468971d-2e00-413f-8401-56ca0914a975" src="https://cdn.javarush.com/images/article/e468971d-2e00-413f-8401-56ca0914a975/800.jpeg" alt="">
+        <p>Нам нужен автоматический и динамический способ для сервисов находить друг друга.</p>
+        <hr>
+        <h2>Паттерн Service Discovery</h2>
+        <p><b>Паттерн <a href="https://www.f5.com/company/blog/nginx/service-discovery-in-a-microservices-architecture" target="_blank">Service Discovery</a></b> решает эту проблему.</p>
+        <p>Идея заключается в создании центрального компонента — <b>Реестра сервисов (Service Registry)</b>. Это своего рода "телефонная книга" для микросервисов.</p>
+        <p>Процесс работает в три этапа:</p>
+        <ol>
+            <li>При старте каждый экземпляр микросервиса "звонит" в реестр и сообщает свое логическое имя, IP-адрес и порт.</li>
+            <li>Когда <code>Order Service</code> хочет вызвать <code>Product Service</code>, он сначала спрашивает у реестра: "По каким адресам сейчас доступен <code>product-service</code>?".</li>
+            <li>Когда сервис корректно завершает работу или перестает отвечать, реестр удаляет его из своего списка, чтобы на него больше не отправляли трафик.</li>
+        </ol>
+        <p>На стороне клиента</p>
+        <img data-max-width="800" data-id="ff5d8560-56dc-4108-b927-a927ab06b105" src="https://cdn.javarush.com/images/article/ff5d8560-56dc-4108-b927-a927ab06b105/800.jpeg" alt="">
+        <p>На стороне сервера</p>
+        <img data-max-width="800" data-id="9825ee33-e633-40f6-91d1-34e4d9146d3a" src="https://cdn.javarush.com/images/article/9825ee33-e633-40f6-91d1-34e4d9146d3a/800.jpeg" alt="">
+        <hr>
+        <h2>Netflix Eureka</h2>
+        <p><b>Eureka</b> — это реализация паттерна Service Registry от компании Netflix, которая стала частью экосистемы Spring Cloud.</p>
+        <p>Архитектура Eureka состоит из двух частей:</p>
+        <ul>
+            <li><b>Eureka Server</b> - это и есть "телефонная книга". Отдельное Spring Boot приложение, которое хранит реестр всех доступных сервисов.</li>
+            <li><b>Eureka Client</b> - логика, которая встраивается в каждый ваш микросервис. Она отвечает за регистрацию сервиса в Eureka Server и за получение от него актуального списка других сервисов.</li>
+        </ul>
+        <p>Eureka спроектирована с упором на отказоустойчивость. Даже если Eureka Server временно недоступен, клиенты продолжат работать с последней полученной копией реестра из своего кэша.</p>
+        <h3>Как работает Eureka</h3>
+        <h4>Схема взаимодействия с Eureka</h4>
+        <div class="mermaid">
+            sequenceDiagram
+            participant OrderService as 🛒 Order Service (Client)
+            participant ProductService as 📦 Product Service (Instance)
+            participant Eureka as ⚙️ Eureka Server (Registry)
+
+            Note over ProductService, Eureka: 1. Регистрация при старте
+            ProductService->>Eureka: Register (name: 'product-service', address: '10.0.1.5:8082')
+            activate Eureka
+            Eureka-->>ProductService: OK
+            deactivate Eureka
+
+            loop Каждые 30 секунд
+            ProductService ->> Eureka: Heartbeat (Я жив!)
+            end
+
+            Note over OrderService, Eureka: 2. Обнаружение другого сервиса
+            OrderService->>Eureka: Fetch Registry (Где найти 'product-service'?)
+            activate Eureka
+            Eureka-->>OrderService: Реестр: {'product-service': ['10.0.1.5:8082']}
+            deactivate Eureka
+
+            Note right of OrderService: Адрес получен и закэширован
+
+            Note over OrderService, ProductService: 3. Прямой вызов сервиса по полученному адресу
+            OrderService->>ProductService: HTTP-запрос (GET /products/123)
+            activate ProductService
+            ProductService-->>OrderService: Ответ (JSON с данными о продукте)
+            deactivate ProductService
+        </div>
+        <p>Клиенты хранят полученный реестр в локальном кэше, чтобы не "дергать" Eureka Server при каждом вызове другого сервиса.</p>
+        <hr>
+        <h2>Настройка Eureka Server</h2>
+        <p>Создать Eureka Server — это стандартная процедура для Spring Boot:</p>
+        <ol>
+            <li><b>На <code>start.spring.io</code></b> выберите зависимость <code>Eureka Server</code>.</li>
+            <li><b>Включите его</b> в главном классе приложения:
+                <pre class="language-java"><code>@SpringBootApplication
+@EnableEurekaServer // &lt;-- Главная аннотация
+public class EurekaServerApplication {
+    // ...
+}
+</code></pre>
+            </li>
+            <li><b>Настройте <code>application.yml</code>:</b>
+                <pre class="language-yaml"><code>server:
+  port: 8761 # Стандартный порт для Eureka
+eureka:
+  client:
+    # Сервер не должен регистрироваться сам в себе
+    register-with-eureka: false
+    fetch-registry: false
+</code></pre>
+            </li>
+        </ol>
+        <p>После запуска по адресу <code>http://localhost:8761</code> будет доступен дашборд Eureka.</p>
+        <hr>
+        <h2>Настройка Eureka Client</h2>
+        <p>Чтобы микросервис регистрировался в Eureka:</p>
+        <ol>
+            <li>Добавьте зависимость <code>spring-cloud-starter-netflix-eureka-client</code> в <code>pom.xml</code>.</li>
+            <li>Включите обнаружение в главном классе:
+                <pre class="language-java"><code>@SpringBootApplication
+@EnableDiscoveryClient // &lt;-- Включает логику клиента
+public class ProductServiceApplication {
+    // ...
+}
+</code></pre>
+            </li>
+            <li><b>Настройте <code>application.yml</code> сервиса:</b>
+                <pre class="language-yaml"><code>spring:
+  application:
+    name: product-service # Это имя будет зарегистрировано в Eureka
+eureka:
+  client:
+    service-url:
+      # Указываем, где находится наш Eureka Server
+      defaultZone: http://localhost:8761/eureka/
+</code></pre>
+            </li>
+        </ol>
+        <hr>
+        <h2>Проблема клиентский доступ</h2>
+        <p>Отлично, наши внутренние сервисы теперь могут находить друг друга. Но возникает новый вопрос: <b>Как внешний клиент должен взаимодействовать с нашей системой?</b></p>
+        <ul>
+            <li>Заставлять фронтенд знать адреса всех 50 микросервисов? Это создаст сильную связанность и усложнит разработку.</li>
+            <li>Какой сервис будет отвечать за аутентификацию и безопасность? Каждый по-своему?</li>
+            <li>Что если несколько сервисов нужно вызвать для одной страницы? Фронтенд будет делать множество запросов.</li>
+        </ul>
+        <p>Эта диаграмма сравнивает хаотичную архитектуру, где клиент напрямую обращается к множеству микросервисов, с упорядоченной архитектурой, где единая точка входа (API Gateway) упрощает взаимодействие и централизует сквозные задачи.</p>
+        <div class="mermaid">
+            graph LR
+            subgraph "Плохо: Прямой доступ клиента"
+            Client1["Клиент"]
+            S1["User Service"]
+            S2["Order Service"]
+            S3["Product Service"]
+            S4["Payment Service"]
+
+            Client1 --> S1 & S2 & S3 & S4
+
+            style Client1 fill:#ffcdd2
+            end
+
+            subgraph "Хорошо: Доступ через API Gateway"
+            Client2[" Клиент"]
+            Gateway["<b>API Gateway</b>"]
+
+            subgraph "Внутренние сервисы (скрыты от клиента)"
+            S5["User Service"]
+            S6["Order Service"]
+            S7["Product Service"]
+            S8["Payment Service"]
+            end
+
+            Client2 -- "Один запрос" --> Gateway
+            Gateway -- "Маршрутизация" --> S5 & S6 & S7 & S8
+
+            style Gateway fill:#c8e6c9
+            end
+        </div>
+        <h3>Паттерн API Gateway</h3>
+        <p>Решение этих проблем — паттерн "API-шлюз" (API Gateway).</p>
+        <p><b>API Gateway</b> — это сервис, который является <b>единой точкой входа</b> для всех внешних запросов. Он действует как обратный прокси (reverse proxy), принимая запросы от клиентов и маршрутизируя их к соответствующим внутренним микросервисам.</p>
+        <p>Клиент взаимодействует только со шлюзом и не знает о внутренней структуре системы.</p>
+        <hr>
+        <h2>Функции API Gateway</h2>
+        <p>API Gateway — это не просто "тупой" прокси. Он берет на себя множество сквозных задач:</p>
+        <ul>
+            <li><b>Routing</b> главная задача. Направляет запрос <code>GET /api/products/123</code> на нужный экземпляр <code>product-service</code>.</li>
+            <li>Проверяет JWT-токены, API-ключи. Внутренние сервисы могут "доверять" запросам, прошедшим через шлюз.</li>
+            <li>Если у <code>product-service</code> есть 5 экземпляров, шлюз распределит нагрузку между ними (Load Balancing).</li>
+            <li>Может принять один запрос от клиента, "сходить" в три внутренних сервиса, собрать ответы и вернуть клиенту один агрегированный ответ.</li>
+            <li>Защищает систему от слишком частых запросов от одного клиента (Rate Limiting).</li>
+            <li>Централизованно логирует все входящие запросы.</li>
+        </ul>
+        <div class="mermaid">
+            graph LR
+            Request[HTTP Request] --> A{Аутентификация};
+            A --> B{Ограничение скорости};
+            B --> C{Логирование};
+            C --> D{Маршрутизация};
+            D --> Service[Микросервис];
+
+            style A fill:#e3f2fd
+            style B fill:#e8f5e8
+            style C fill:#fff3e0
+            style D fill:#f3e5f5
+        </div>
+        <hr>
+        <h2>Spring Cloud Gateway</h2>
+        <p><b>Spring Cloud Gateway</b> — это проект для создания API-шлюзов на основе Spring.</p>
+        <p>Ключевые особенности:</p>
+        <ul>
+            <li>Построен на Spring WebFlux, что делает его неблокирующим и отлично подходящим для обработки большого количества одновременных соединений.</li>
+            <li>Маршруты и фильтры легко настраиваются через <code>application.yml</code>.</li>
+            <li>Из коробки" умеет работать с Eureka для динамической маршрутизации.</li>
+            <li>Позволяет легко модифицировать запросы и ответы "на лету".</li>
+        </ul>
+        <h3>Как работает Spring Cloud Gateway</h3>
+        <p>Обработка запроса в Gateway строится на трех понятиях:</p>
+        <ul>
+            <li><b>Route</b> основной строительный блок. Состоит из ID, URI назначения, набора предикатов и набора фильтров.</li>
+            <li><b>Predicate</b> условие для сопоставления. Если запрос удовлетворяет предикату, то применяется данный маршрут.</li>
+            <li><b>Filter</b> код, который может изменять входящий HTTP-запрос или исходящий HTTP-ответ.</li>
+        </ul>
+        <h4>Схема обработки запроса</h4>
+        <div class="mermaid">
+            graph TD
+            A(HTTP Request) --> B{Iterate through Routes};
+            B -- Route 1 Matches --> C(Apply Route 1 Filters);
+            C --> D(Proxy to Downstream Service 1);
+            B -- Route 1 No Match --> E{Route 2 Matches?};
+            E -- Yes --> F(Apply Route 2 Filters);
+            F --> G(Proxy to Downstream Service 2);
+            E -- No Match, More Routes --> B;
+            E -- No Match, No More Routes --> H(Return 404 Not Found);
+            D -- HTTP Response from Service 1 --> I(Apply Reverse Filters);
+            I --> J(HTTP Response to Client);
+            G -- HTTP Response from Service 2 --> K(Apply Reverse Filters);
+            K --> J;
+        </div>
+        <p>Обработка запроса в Gateway включает следующие шаги: получение HTTP-запроса, последовательное сопоставление с настроенными маршрутами на основе предикатов. При нахождении подходящего маршрута активируется цепочка Gateway-фильтров, которая может изменять запрос и ответ. После применения фильтров запрос проксируется к целевому сервису. Если ни один маршрут не соответствует запросу, возвращается ответ 404.</p>
+        <hr>
+        <h2>Настройка маршрутизации</h2>
+        <p>Настроить маршруты очень просто в <code>application.yml</code> самого Gateway-сервиса.</p>
+        <pre class="language-yaml"><code>spring:
+  cloud:
+    gateway:
+      routes:
+        # Правило 1: все запросы, начинающиеся с /api/users/,
+        # направить на user-service
+        - id: user_service_route
+          uri: http://localhost:8081 # Пока что "захардкожено"
+          predicates:
+            - Path=/api/users/**
+
+        # Правило 2: все запросы, начинающиеся с /api/products/,
+        # направить на product-service
+        - id: product_service_route
+          uri: http://localhost:8082
+          predicates:
+            - Path=/api/products/**
+</code></pre>
+        <p>Предикат <code>Path</code> — один из многих. Есть предикаты для проверки HTTP-метода, заголовков, параметров запроса и т.д.</p>
+        <hr>
+        <h2>Интеграция с Eureka</h2>
+        <p>Жестко прописывать URI, как в прошлом примере — плохая практика. Gateway должен использовать Service Discovery!</p>
+        <p>Для этого нужно:</p>
+        <ol>
+            <li>Сделать Gateway Eureka-клиентом (добавить зависимость и аннотацию).</li>
+            <li>Использовать специальный префикс <code>lb://</code> (load-balanced) в URI маршрута.</li>
+        </ol>
+        <pre class="language-yaml"><code>spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          # Включаем интеграцию с Service Discovery
+          enabled: true
+      routes:
+        - id: user_service_route
+          # lb://&lt;имя-сервиса-в-eureka&gt;
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/api/users/**
+
+        - id: product_service_route
+          uri: lb://PRODUCT-SERVICE
+          predicates:
+            - Path=/api/products/**
+</code></pre>
+        <p>Теперь Gateway будет запрашивать у Eureka актуальные адреса <code>USER-SERVICE</code>, а встроенный балансировщик нагрузки (Spring Cloud LoadBalancer) будет распределять запросы между доступными экземплярами.</p>
+        <hr>
+        <h2>Фильтры Gateway</h2>
+        <p>Фильтры позволяют выполнять сквозную логику. Их можно применять глобально или к конкретным маршрутам.</p>
+        <p>Добавим заголовок <code>X-Request-Source: api-gateway</code> ко всем запросам, которые проходят через шлюз.</p>
+        <pre class="language-yaml"><code>spring:
+  cloud:
+    gateway:
+      # Глобальный фильтр, применяется ко всем маршрутам
+      default-filters:
+        - AddRequestHeader=X-Request-Source, api-gateway
+
+      routes:
+        - id: user_service_route
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/api/users/**
+          filters:
+            # Фильтр для конкретного маршрута: убирает первый сегмент пути
+            # /api/users/1 -> /1
+            - StripPrefix=1
+</code></pre>
+        <p>Существует множество встроенных фильтров: для добавления/удаления заголовков, перезаписи путей, ограничения скорости (rate limiting), реализации Circuit Breaker и многого другого.</p>
+        <hr>
+        <h2>Итог: Полная картина</h2>
+        <p>Давайте соберем все вместе в финальную архитектурную схему.</p>
+        <h4>Финальная архитектура</h4>
+        <div class="mermaid">
+            graph LR
+            subgraph "Внешний мир"
+            Client[Клиент]
+            end
+
+            subgraph "Инфраструктурные сервисы"
+            Gateway(API Gateway)
+            Eureka(⚙Service Registry)
+            end
+
+            subgraph "Бизнес-сервисы"
+            S1[Order Service]
+            S2[Product Service]
+            S3[User Service]
+            end
+
+            Client -- HTTP Request --> Gateway
+
+            Gateway -- lb://ORDER-SERVICE --> S1
+            Gateway -- lb://PRODUCT-SERVICE --> S2
+            Gateway -- lb://USER-SERVICE --> S3
+
+            S1 -- REST вызов --> S2
+            S1 -- REST вызов --> S3
+
+            S1 &lt;--> Eureka
+            S2 &lt;--> Eureka
+            S3 &lt;--> Eureka
+            Gateway &lt;--> Eureka
+
+            style Gateway fill:#ccf,stroke:#333
+            style Eureka fill:#f9f,stroke:#333
+        </div>
+        <p>Эта схема показывает, как API Gateway и Service Discovery работают вместе, чтобы создать управляемую, масштабируемую и отказоустойчивую микросервисную систему.</p>
+        <hr>
+    </db-content>
+</div>
+</body>
+</html>

@@ -1,0 +1,179 @@
+# Общая конфигурация модуля m5-level-24.
+# В одном модуле живут четыре @SpringBootApplication: Eureka Server, user-service,
+# product-service и API Gateway. Конкретное приложение выбирается через
+# -Dspring-boot.run.main-class=..., а его настройки — через профиль
+# (см. README.md).
+#
+# В дефолтном блоке оставляем только то, что общее для всех: отключаем
+# Eureka-клиент (его включат конкретные профили) и H2-консоль на случай
+# запуска без профиля. Конкретные параметры (порт, имя приложения, маршруты)
+# вынесены в профиль-специфичные секции ниже.
+
+spring:
+  application:
+    name: m5-level-24
+  jpa:
+    hibernate:
+      ddl-auto: update
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driverClassName: org.h2.Driver
+    username: sa
+    password: ""
+  # По умолчанию глушим Spring Cloud Gateway: его автоконфиги (`GatewayAutoConfiguration`
+  # и др.) поднимают реактивный стэк и в сервлетных приложениях падают на отсутствии
+  # WebFlux-бинов (например, ServerCodecConfigurer). Профиль `gateway` включает обратно.
+  # (GatewayClassPathWarningAutoConfiguration отдельно исключается аннотацией
+  # @SpringBootApplication(exclude=...) у сервлетных приложений — этот флаг её не отключает.)
+  cloud:
+    gateway:
+      server:
+        webflux:
+          enabled: false
+
+# По умолчанию Eureka-клиент не пытается ничего регистрировать —
+# профили eureka/user/product/gateway включают его явно.
+eureka:
+  client:
+    enabled: false
+    # В Spring Cloud Netflix 5.0.x Jersey-путь больше не создаёт
+    # TransportClientFactories автоматически — DiscoveryClientOptionalArgsConfiguration
+    # падает с NoSuchBeanDefinitionException, даже когда eureka-client-jersey3 на classpath.
+    # Принудительно выключаем Jersey, чтобы активировался RestClient-путь
+    # (RestClientTransportClientFactories) — он на Spring Boot 4 / Spring 7 идёт «из коробки».
+    jersey:
+      enabled: false
+    webclient:
+      enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway
+
+---
+# === Профиль eureka ===
+# Запускает Eureka Server. Сам себя в реестре не регистрирует.
+# Активация: --spring.profiles.active=eureka
+#   mvn spring-boot:run \
+#     -Dspring-boot.run.main-class=com.javarush.eurekaserver.EurekaServerApplication \
+#     -Dspring-boot.run.profiles=eureka
+spring:
+  config:
+    activate:
+      on-profile: eureka
+  application:
+    name: eureka-server
+server:
+  port: 8761
+eureka:
+  client:
+    enabled: true
+    # Сервер не должен регистрироваться сам в себе
+    register-with-eureka: false
+    fetch-registry: false
+
+---
+# === Профиль user ===
+# user-service: REST + JPA + H2, регистрируется в Eureka как USER-SERVICE.
+spring:
+  config:
+    activate:
+      on-profile: user
+  application:
+    # Это имя становится ID сервиса в Eureka (в верхнем регистре).
+    name: USER-SERVICE
+server:
+  port: 8081
+eureka:
+  client:
+    enabled: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+---
+# === Профиль product ===
+# product-service: упрощённый, in-memory, без БД. Регистрируется как PRODUCT-SERVICE.
+spring:
+  config:
+    activate:
+      on-profile: product
+  application:
+    name: PRODUCT-SERVICE
+server:
+  port: 8082
+eureka:
+  client:
+    enabled: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+---
+# === Профиль gateway ===
+# API Gateway на Spring Cloud Gateway (реактивный, WebFlux).
+# spring.main.web-application-type=reactive принудительно переключает Spring Boot
+# на реактивный стэк — в classpath лежат и webmvc, и webflux, по умолчанию
+# Boot бы выбрал сервлет и Gateway бы не запустился.
+spring:
+  config:
+    activate:
+      on-profile: gateway
+  application:
+    name: API-GATEWAY
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      # В Spring Cloud Gateway 5.x (BOM 2025.1.x) свойства реактивного
+      # шлюза переехали под server.webflux.* (для MVC-варианта — под server.webmvc.*).
+      # Старый префикс spring.cloud.gateway.* без подзоны больше не действует.
+      server:
+        webflux:
+          # Включаем обратно, так как в дефолтном блоке выключено для сервлетных приложений.
+          enabled: true
+          # Глобальный фильтр: добавляем заголовок ко всем проксируемым запросам.
+          # Видно через ответ контроллеров — поле "requestSource" вернёт "api-gateway".
+          default-filters:
+            - AddRequestHeader=X-Request-Source, api-gateway
+          # Включаем интеграцию маршрутов с Service Discovery (через lb://).
+          discovery:
+            locator:
+              enabled: false # явные маршруты ниже точнее, чем автоматические
+          routes:
+            # Правило 1: всё, что начинается с /api/users/, идёт в USER-SERVICE.
+            # StripPrefix=1 убирает первый сегмент пути: /api/users/1 -> /users/1
+            # (контроллер user-service сидит на /users).
+            - id: user_service_route
+              uri: lb://USER-SERVICE
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - StripPrefix=1
+
+            # Правило 2: всё, что начинается с /api/products/, идёт в PRODUCT-SERVICE.
+            - id: product_service_route
+              uri: lb://PRODUCT-SERVICE
+              predicates:
+                - Path=/api/products/**
+              filters:
+                - StripPrefix=1
+server:
+  port: 8080
+eureka:
+  client:
+    enabled: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+management:
+  # В Spring Boot 4.x появилась модель Access. Endpoint `gateway` по умолчанию
+  # имеет access=none — без явного unrestricted /actuator/gateway/routes даёт 404.
+  endpoint:
+    gateway:
+      access: unrestricted

@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.3</version>
+        <relativePath/>
+    </parent>
+    <groupId>com.javarush</groupId>
+    <artifactId>m5-level-24</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>m5-level-24</name>
+    <description>Demo project for Spring Boot — API Gateway + Service Discovery (Eureka)</description>
+    <url/>
+    <licenses>
+        <license/>
+    </licenses>
+    <developers>
+        <developer/>
+    </developers>
+    <scm>
+        <connection/>
+        <developerConnection/>
+        <tag/>
+        <url/>
+    </scm>
+    <properties>
+        <java.version>17</java.version>
+        <!-- Spring Cloud 2025.1.x — релизная линейка, совместимая со Spring Boot 4.0.x.
+             Внутри BOM: spring-cloud-netflix-eureka 5.0.x, spring-cloud-gateway 5.0.x. -->
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <!-- В модуле живут четыре @SpringBootApplication. По умолчанию запускается
+             user-service; переопределение для других:
+               -Dspring-boot.run.main-class=com.javarush.eurekaserver.EurekaServerApplication
+               -Dspring-boot.run.main-class=com.javarush.productservice.ProductServiceApplication
+               -Dspring-boot.run.main-class=com.javarush.apigateway.ApiGatewayApplication -->
+        <spring-boot.run.main-class>com.javarush.userservice.UserServiceApplication</spring-boot.run.main-class>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- WebMVC нужен сервлетным приложениям (eureka-server, user-service, product-service).
+             API Gateway в профиле gateway работает поверх WebFlux — переключается через
+             spring.main.web-application-type=reactive в application.yml. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+
+        <!-- WebFlux нужен Spring Cloud Gateway (реактивный вариант). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+        </dependency>
+
+        <!-- Spring Cloud Gateway — реактивный API-шлюз.
+             В Spring Cloud Gateway 5.x (BOM 2025.1.x) стартер переименован:
+             старый spring-cloud-starter-gateway теперь
+             spring-cloud-starter-gateway-server-webflux (есть и webmvc-вариант).
+             Используется только в профиле gateway. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+        </dependency>
+
+        <!-- Eureka Server — реализация Service Registry от Netflix.
+             Активируется аннотацией @EnableEurekaServer. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+        </dependency>
+
+        <!-- Eureka Client — встраивается в каждый сервис, регистрирует
+             приложение в Eureka Server и кэширует реестр других сервисов.
+             Spring Cloud LoadBalancer (lb://) использует этот же реестр. -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+        </dependency>
+
+        <!-- В spring-cloud-netflix 5.0.x стартер eureka-client больше не подтягивает
+             Jersey3-транспорт транзитивно (в отличие от eureka-server-стартера).
+             Без него автоконфиг DiscoveryClientOptionalArgsConfiguration падает с
+             NoSuchBeanDefinitionException на TransportClientFactories. Добавляем явно. -->
+        <dependency>
+            <groupId>com.netflix.eureka</groupId>
+            <artifactId>eureka-client-jersey3</artifactId>
+        </dependency>
+
+        <!-- Actuator: /actuator/health, /actuator/gateway/routes и т.п. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Требуется только в Spring Boot 4.x+ для включения H2-консоли.
+             Для версий 3.x и ниже не нужна – достаточно spring.h2.console.enabled=true.
+             В любом случае необходим spring-boot-starter-data-jpa или jdbc для создания DataSource. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-h2console</artifactId>
+        </dependency>
+
+        <!-- H2 Database -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.4.240</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Необходим для создания DataSource и инициализации in-memory базы H2.
+             Без этого стартера консоль H2 не сможет подключиться, т.к. база не будет создана.
+             JPA используется только в user-service; остальные приложения исключают
+             DataSourceAutoConfiguration в своих @SpringBootApplication. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Lombok – автоматически генерирует конструкторы, геттеры, сеттеры и др. через аннотации.
+             optional=true означает, что зависимость не транзитивно не передаётся и не нужна в рантайме. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- mainClass подставляется из свойства, чтобы можно было
+                         переопределить из командной строки (см. README.md).
+                         По умолчанию запускается user-service. -->
+                    <mainClass>${spring-boot.run.main-class}</mainClass>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
